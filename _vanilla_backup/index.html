@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="AI News Dashboard — Curated AI articles from Ben's Bites, The AI Rundown, and more. Updated every 24 hours.">
+    <title>AI Pulse — Your Daily AI News Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+</head>
+
+<body>
+    <!-- ═══ Background Effects ═══ -->
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+
+    <!-- ═══ Header ═══ -->
+    <header class="header" id="header">
+        <div class="header-inner">
+            <div class="logo-group">
+                <div class="logo-icon" id="logo-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                    </svg>
+                </div>
+                <h1 class="logo-text">AI <span class="logo-accent">Pulse</span></h1>
+            </div>
+            <p class="tagline">Curated AI news from the best newsletters</p>
+            <div class="header-actions">
+                <div class="search-box" id="search-box">
+                    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input type="text" class="search-input" id="search-input" placeholder="Search articles..."
+                        aria-label="Search articles">
+                </div>
+                <button class="btn-refresh" id="btn-refresh" aria-label="Refresh feed">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10" />
+                        <polyline points="1 20 1 14 7 14" />
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                    </svg>
+                    <span>Refresh</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══ Stats Bar ═══ -->
+    <section class="stats-bar" id="stats-bar">
+        <div class="stat-item">
+            <span class="stat-number" id="stat-total">0</span>
+            <span class="stat-label">Articles</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+            <span class="stat-number" id="stat-sources">2</span>
+            <span class="stat-label">Sources</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+            <span class="stat-number" id="stat-saved">0</span>
+            <span class="stat-label">Saved</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+            <span class="stat-time" id="stat-updated">—</span>
+            <span class="stat-label">Last Updated</span>
+        </div>
+    </section>
+
+    <!-- ═══ Filter Tabs ═══ -->
+    <nav class="filter-tabs" id="filter-tabs" aria-label="Source filters">
+        <button class="tab active" id="tab-all" data-source="all">
+            <span class="tab-dot tab-dot-all"></span>
+            All Sources
+            <span class="tab-count" id="count-all">0</span>
+        </button>
+        <button class="tab" id="tab-bens-bites" data-source="bens_bites">
+            <span class="tab-dot tab-dot-bens"></span>
+            Ben's Bites
+            <span class="tab-count" id="count-bens">0</span>
+        </button>
+        <button class="tab" id="tab-the-rundown" data-source="the_rundown">
+            <span class="tab-dot tab-dot-rundown"></span>
+            The Rundown
+            <span class="tab-count" id="count-rundown">0</span>
+        </button>
+        <button class="tab" id="tab-saved" data-source="saved">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
+            Saved
+            <span class="tab-count" id="count-saved">0</span>
+        </button>
+    </nav>
+
+    <!-- ═══ Main Content ═══ -->
+    <main class="main-content" id="main-content">
+        <!-- Loading State -->
+        <div class="loading-state" id="loading-state">
+            <div class="loading-spinner"></div>
+            <p>Loading your AI news feed...</p>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state hidden" id="empty-state">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"
+                stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+            </svg>
+            <h3>No articles found</h3>
+            <p>Try changing your filter or search query</p>
+        </div>
+
+        <!-- Article Grid -->
+        <div class="article-grid hidden" id="article-grid">
+            <!-- Cards rendered by JS -->
+        </div>
+    </main>
+
+    <!-- ═══ Toast Container ═══ -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
