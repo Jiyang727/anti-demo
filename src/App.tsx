@@ -9,7 +9,7 @@ import {
 } from "@/lib/helpers";
 import type { Article, FeedData, SourceFilter } from "@/types";
 
-const FEED_PATH = ".tmp/feed.json";
+const FEED_PATH = "https://lijiyang727--ai-pulse-scraper-get-feed.modal.run";
 
 export default function App() {
     const [articles, setArticles] = useState<Article[]>([]);
@@ -195,8 +195,8 @@ export default function App() {
                         key={tab.key}
                         onClick={() => setActiveSource(tab.key)}
                         className={`flex items-center gap-1.5 px-4 py-2 rounded-sm font-mono text-xs font-medium uppercase tracking-wider border transition-all duration-150 whitespace-nowrap ${activeSource === tab.key
-                                ? "bg-accent border-accent text-accent-foreground shadow-[0_0_20px_rgba(191,245,73,0.2)]"
-                                : "bg-transparent border-border text-muted-foreground hover:bg-white/4 hover:border-accent hover:text-accent"
+                            ? "bg-accent border-accent text-accent-foreground shadow-[0_0_20px_rgba(191,245,73,0.2)]"
+                            : "bg-transparent border-border text-muted-foreground hover:bg-white/4 hover:border-accent hover:text-accent"
                             }`}
                     >
                         {tab.dot && (
@@ -209,8 +209,8 @@ export default function App() {
                         {tab.label}
                         <span
                             className={`px-1.5 py-px rounded-sm text-[0.7rem] font-bold font-mono ${activeSource === tab.key
-                                    ? "bg-accent-foreground/20 text-accent-foreground"
-                                    : "bg-white/8"
+                                ? "bg-accent-foreground/20 text-accent-foreground"
+                                : "bg-white/8"
                                 }`}
                         >
                             {tab.count}
