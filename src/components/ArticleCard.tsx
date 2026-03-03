@@ -6,7 +6,7 @@ import type { Article } from "@/types";
 interface ArticleCardProps {
     article: Article;
     isSaved: boolean;
-    onToggleSave: (id: string, source: string) => void;
+    onToggleSave: (id: string) => void;
     index: number;
 }
 
@@ -107,7 +107,7 @@ export function ArticleCard({ article, isSaved, onToggleSave, index }: ArticleCa
                         </span>
                         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                             <button
-                                onClick={() => onToggleSave(article.id, article.source)}
+                                onClick={() => onToggleSave(article.id)}
                                 className={`group relative flex items-center justify-center w-8 h-8 rounded-sm border transition-all duration-150 ${isSaved
                                     ? "bg-accent border-accent text-accent-foreground hover:bg-[#d4ff6b]"
                                     : "bg-transparent border-border text-text-tertiary hover:bg-accent-dim hover:border-accent hover:text-accent"

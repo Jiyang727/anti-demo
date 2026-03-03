@@ -2,12 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Zap, Search, RefreshCw, Bookmark, FileText, Bell } from "lucide-react";
 import { ArticleCard } from "@/components/ArticleCard";
 import { SkeletonCard } from "@/components/SkeletonCard";
-import {
-    loadSavedIds,
-    saveToPersistence,
-    removeFromPersistence,
-    formatRelativeTime,
-} from "@/lib/helpers";
+import { formatRelativeTime } from "@/lib/helpers";
+import { supabase } from "@/lib/supabase";
 import type { Article, FeedData, SourceFilter } from "@/types";
 
 const FEED_PATH = "https://lijiyang727--ai-pulse-scraper-get-feed.modal.run";
@@ -68,10 +64,19 @@ export default function App() {
             const data: FeedData = await resp.json();
             setArticles(data.articles || []);
             setFeedMeta(data);
-            setSavedIds(loadSavedIds());
+
+            try {
+                // Fetch user bookmarks from Supabase
+                const { data: savedData, error } = await supabase.from('saved_articles').select('article_id');
+                if (error) throw error;
+                setSavedIds(new Set(savedData?.map((s: { article_id: string }) => s.article_id) || []));
+            } catch (supaErr) {
+                console.error("Failed to load saved state from Supabase:", supaErr);
+            }
+
             setIsLoading(false);
-            showToast("✨", `Loaded ${data.articles.length} articles`);
-            checkForNewArticles(data.articles.length);
+            showToast("✨", `Loaded ${data.articles?.length || 0} articles`);
+            checkForNewArticles(data.articles?.length || 0);
         } catch (err) {
             console.error("Failed to load feed:", err);
             setIsLoading(false);
@@ -109,20 +114,35 @@ export default function App() {
     };
 
     // ── Toggle save ──────────────────────
-    const handleToggleSave = (articleId: string, source: string) => {
-        setSavedIds((prev) => {
-            const next = new Set(prev);
-            if (next.has(articleId)) {
-                next.delete(articleId);
-                removeFromPersistence(articleId);
+    const handleToggleSave = async (articleId: string) => {
+        try {
+            if (savedIds.has(articleId)) {
+                // Delete from DB
+                const { error } = await supabase.from('saved_articles').delete().eq('article_id', articleId);
+                if (error) throw error;
+
+                setSavedIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(articleId);
+                    return next;
+                });
                 showToast("🔖", "Article removed from saved");
             } else {
-                next.add(articleId);
-                saveToPersistence(articleId, source);
+                // Insert into DB
+                const { error } = await supabase.from('saved_articles').insert([{ article_id: articleId }]);
+                if (error) throw error;
+
+                setSavedIds((prev) => {
+                    const next = new Set(prev);
+                    next.add(articleId);
+                    return next;
+                });
                 showToast("⭐", "Article saved!");
             }
-            return next;
-        });
+        } catch (error) {
+            console.error("Save error:", error);
+            showToast("⚠️", "Failed to update saved state");
+        }
     };
 
     // ── Refresh ──────────────────────────
@@ -208,8 +228,8 @@ export default function App() {
                     <button
                         onClick={requestNotifications}
                         className={`hidden sm:flex items-center justify-center w-10 h-10 rounded-sm border transition-all duration-150 ${notifEnabled
-                                ? "bg-accent/10 border-accent text-accent"
-                                : "bg-transparent border-border text-text-tertiary hover:bg-white/4 hover:border-accent hover:text-accent"
+                            ? "bg-accent/10 border-accent text-accent"
+                            : "bg-transparent border-border text-text-tertiary hover:bg-white/4 hover:border-accent hover:text-accent"
                             }`}
                         title={notifEnabled ? "Notifications enabled" : "Enable notifications"}
                     >
@@ -296,7 +316,7 @@ export default function App() {
                                 key={article.id}
                                 article={article}
                                 isSaved={savedIds.has(article.id)}
-                                onToggleSave={handleToggleSave}
+                                onToggleSave={() => handleToggleSave(article.id)}
                                 index={i}
                             />
                         ))}

@@ -16,8 +16,8 @@ app = modal.App("ai-pulse-scraper")
 # Volume to persist scraped data between runs
 volume = modal.Volume.from_name("ai-pulse-data", create_if_missing=True)
 
-# Base image with Python 3.12 (scrapers use only stdlib)
-image = modal.Image.debian_slim(python_version="3.12")
+# Base image with Python 3.12 + supabase client
+image = modal.Image.debian_slim(python_version="3.12").pip_install("supabase")
 image_with_fastapi = image.pip_install("fastapi[standard]")
 
 VOLUME_PATH = "/data"
@@ -38,6 +38,7 @@ def scrape_and_aggregate():
     import time
     import re
     from datetime import datetime, timezone
+
     from html.parser import HTMLParser
     from urllib.request import Request, urlopen
     from urllib.error import HTTPError, URLError
@@ -45,7 +46,7 @@ def scrape_and_aggregate():
     TMP_DIR = os.path.join(VOLUME_PATH, "tmp")
     os.makedirs(TMP_DIR, exist_ok=True)
 
-    USER_AGENT = "AI-Pulse-Bot/1.0 (news aggregator; polite scraping)"
+    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     REQUEST_DELAY = 1  # seconds between requests
 
     # ════════════════════════════════════════════════════════════════════
@@ -239,12 +240,15 @@ def scrape_and_aggregate():
             print("[ERROR] Failed to fetch The AI Rundown.", file=sys.stderr)
             return []
 
-        # Extract unique /p/ links via regex
-        links = re.findall(r'href=["\']*(https://therundown\.ai/p/[a-z0-9\-]+)', html)
+        # Extract unique /p/ links via regex (they are relative on the site now)
+        links = re.findall(r'href=["\']*([^"\' >]*\/p\/[a-z0-9\-]+)', html)
         seen = set()
         unique_links = []
         for link in links:
             clean = link.split("?")[0]
+            if clean.startswith("/"):
+                clean = "https://therundown.ai" + clean
+                
             if clean not in seen:
                 seen.add(clean)
                 unique_links.append(clean)
@@ -340,8 +344,10 @@ def scrape_and_aggregate():
         print("[INFO] Scraping Reddit r/artificial...")
         url = "https://www.reddit.com/r/artificial/hot.json?limit=20"
         try:
+            # Reddit API requires a specific User-Agent format to avoid 403s from cloud IPs
+            reddit_ua = "web:newsaggregator:v1.0 (by /u/LenoBot)"
             req = Request(url, headers={
-                "User-Agent": USER_AGENT,
+                "User-Agent": reddit_ua,
                 "Accept": "application/json",
             })
             with urlopen(req, timeout=30) as resp:
@@ -419,7 +425,7 @@ def scrape_and_aggregate():
         }
 
     # ════════════════════════════════════════════════════════════════════
-    # Main Pipeline
+    # Main Pipeline & Supabase Upsert
     # ════════════════════════════════════════════════════════════════════
 
     print("=" * 60)
@@ -436,6 +442,35 @@ def scrape_and_aggregate():
     print(f"[INFO] Reddit: {len(reddit)} articles scraped")
 
     feed = aggregate(bens + rundown + reddit)
+    unique = feed["articles"]
+    
+    # Supabase Integration
+    from supabase import create_client, Client
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_KEY")
+    
+    if supabase_url and supabase_key:
+        try:
+            supabase: Client = create_client(supabase_url, supabase_key)
+            
+            # Upsert into articles table. Postgres `id` is primary key.
+            # Format dates properly as ISO string for DB.
+            db_records = []
+            for a in unique:
+                record = dict(a)
+                # the DB schema uses 'image_url' and 'scraped_at' instead of CamelCase
+                record['image_url'] = record.pop('imageUrl', None)
+                record['scraped_at'] = record.pop('scrapedAt', None)
+                db_records.append(record)
+                
+            response = supabase.table('articles').upsert(db_records, on_conflict='id').execute()
+            print(f"[INFO] Supabase Upsert Success: {len(db_records)} articles stored.")
+        except Exception as e:
+            print(f"[ERROR] Supabase Integration Failed: {e}", file=sys.stderr)
+    else:
+        print("[WARN] SUPABASE_URL or SUPABASE_KEY missing in environment.", file=sys.stderr)
+
+    # Fallback/Local storage backup
     output_path = os.path.join(VOLUME_PATH, "feed.json")
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(feed, f, indent=2, ensure_ascii=False)
@@ -454,18 +489,50 @@ def scrape_and_aggregate():
 
 # ── Web endpoint to fetch the latest feed.json ─────────────────────────────
 
-@app.function(image=image_with_fastapi, volumes={VOLUME_PATH: volume})
+@app.function(
+    image=image_with_fastapi, 
+    volumes={VOLUME_PATH: volume},
+    secrets=[modal.Secret.from_name("my-supabase-secret", required=False)]  # You can either bind a managed secret or rely on the .modal.toml [secrets] block
+)
 @modal.fastapi_endpoint(method="GET")
 def get_feed():
-    """HTTP endpoint to get the latest feed.json data."""
-    import json
+    """HTTP endpoint to get the latest articles directly from Supabase DB."""
     import os
+    from datetime import datetime, timezone
+    from supabase import create_client, Client
 
-    feed_path = os.path.join(VOLUME_PATH, "feed.json")
-    volume.reload()
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_KEY")
+    
+    if not supabase_url or not supabase_key:
+        return {"error": "Supabase credentials are not configured in Modal."}
 
-    if not os.path.exists(feed_path):
-        return {"error": "No feed data yet. Wait for first scrape or trigger manually."}
-
-    with open(feed_path, "r") as f:
-        return json.load(f)
+    supabase: Client = create_client(supabase_url, supabase_key)
+    
+    try:
+        response = supabase.table('articles').select('*').order('date', desc=True).limit(50).execute()
+        articles = response.data
+        
+        # Transform back to the frontend's expected CamelCase format
+        frontend_articles = []
+        for a in articles:
+            rec = dict(a)
+            rec['imageUrl'] = rec.pop('image_url', None)
+            rec['scrapedAt'] = rec.pop('scraped_at', None)
+            frontend_articles.append(rec)
+            
+        bens = len([a for a in frontend_articles if a.get("source") == "bens_bites"])
+        rundown = len([a for a in frontend_articles if a.get("source") == "the_rundown"])
+        reddit = len([a for a in frontend_articles if a.get("source") == "reddit"])
+        
+        return {
+            "lastUpdated": datetime.now(timezone.utc).isoformat(),
+            "sources": {
+                "bens_bites": bens,
+                "the_rundown": rundown,
+                "reddit": reddit
+            },
+            "articles": frontend_articles
+        }
+    except Exception as e:
+        return {"error": str(e)}

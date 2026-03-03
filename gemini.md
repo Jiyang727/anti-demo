@@ -78,4 +78,14 @@
 
 ## 6. Maintenance Log
 
-_To be populated in Phase 5: Trigger._
+### Scraper Reliability (Phase 2 & Phase 5)
+- **The Rundown**: Their website moved away from deep HTML structures to relative links (`/p/...`). The scraper now relies on regex (`r'href=["\']*([^"\' >]*\/p\/[a-z0-9\-]+)'`) to extract URLs dependably.
+- **Reddit API**: Anonymous scraper access via standard `urllib` user-agents is consistently blocked (`403 Forbidden`) when originating from cloud IPs (Modal). The project constitution explicitly marks OAuth as the long-term solution. Currently deferred to Phase 6.
+
+### Automation & Persistence (Phase 5)
+- **Supabase**: Replaced `feed.json` with a PostgreSQL database. The schema leverages an `ON DELETE CASCADE` relationship between `articles` and `saved_articles`.
+- **Cron Jobs**: The execution pipeline is deployed to Modal using `@app.function(schedule=modal.Cron("0 8 * * *"))` to sync new articles daily at 08:00 UTC.
+
+**Future Considerations (Phase 6):**
+- Implement Reddit API using PRAW for authenticated scraping.
+- Apply Supabase Row Level Security (RLS) bound to a user authentication system (e.g. NextAuth/Supabase Auth).

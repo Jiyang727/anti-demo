@@ -37,6 +37,6 @@
 - [x] Verified in browser — gorgeous design ✨
 
 ## Phase 5: Trigger (T) — Future
-- [ ] Supabase integration
-- [ ] Automation triggers (cron/24h refresh)
+- [x] Supabase integration
+- [x] Automation triggers (cron/24h refresh)
 - [ ] Finalize Maintenance Log in `gemini.md`
