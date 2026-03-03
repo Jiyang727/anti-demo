@@ -19,6 +19,7 @@
     --color-card-hover: rgba(30, 30, 30, 0.95);
     --color-bens: #BFF549;
     --color-rundown: #7DE8FF;
+    --color-reddit: #FF6B35;
     --color-text-tertiary: #666666;
     --color-text-muted: #444444;
 
@@ -77,6 +78,26 @@ h6 {
 
 .animate-card-enter {
     animation: card-enter 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* ── Skeleton Shimmer ────────────────── */
+@keyframes skeleton-shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.animate-skeleton-shimmer {
+    background: linear-gradient(90deg,
+            rgba(255, 255, 255, 0.03) 0%,
+            rgba(255, 255, 255, 0.08) 50%,
+            rgba(255, 255, 255, 0.03) 100%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.8s ease-in-out infinite;
 }
 
 /* ── Spinner ─────────────────────────── */
@@ -147,6 +168,33 @@ h6 {
     pointer-events: none;
 }
 
+/* ── Tooltips ────────────────────────── */
+.tooltip {
+    position: absolute;
+    bottom: 110%;
+    left: 50%;
+    transform: translateX(-50%) scale(0.9);
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: #1a1a1a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #a0a0a0;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s, transform 0.15s;
+}
+
+.group:hover .tooltip {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+}
+
 /* ── Focus-visible for keyboard nav ── */
 *:focus-visible {
     outline: 2px solid var(--color-accent);
@@ -156,6 +204,7 @@ h6 {
 /* ── Scrollbar styling ─────────────── */
 ::-webkit-scrollbar {
     width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -169,4 +218,14 @@ h6 {
 
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Hide scrollbar for filter tabs ── */
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
 }

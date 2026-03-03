@@ -18,7 +18,7 @@ export function ArticleCard({ article, isSaved, onToggleSave, index }: ArticleCa
     const badgeColors: Record<string, string> = {
         bens_bites: "bg-accent/12 text-bens border border-bens/25",
         the_rundown: "bg-rundown/10 text-rundown border border-rundown/20",
-        reddit: "bg-red-500/10 text-red-400 border border-red-500/20",
+        reddit: "bg-reddit/10 text-reddit border border-reddit/20",
     };
 
     return (
@@ -43,7 +43,7 @@ export function ArticleCard({ article, isSaved, onToggleSave, index }: ArticleCa
                     onClick={() => window.open(article.url, "_blank", "noopener")}
                 >
                     {/* Image */}
-                    <div className="relative h-[180px] overflow-hidden bg-muted card-image-gradient">
+                    <div className="relative h-[140px] sm:h-[180px] overflow-hidden bg-muted card-image-gradient">
                         {article.imageUrl ? (
                             <img
                                 src={article.imageUrl}
@@ -67,7 +67,7 @@ export function ArticleCard({ article, isSaved, onToggleSave, index }: ArticleCa
                     </div>
 
                     {/* Body */}
-                    <div className="flex flex-col gap-2 p-6 flex-1">
+                    <div className="flex flex-col gap-2 p-5 sm:p-6 flex-1">
                         {/* Meta */}
                         <div className="flex items-center justify-between gap-2">
                             <span
@@ -81,7 +81,7 @@ export function ArticleCard({ article, isSaved, onToggleSave, index }: ArticleCa
                         </div>
 
                         {/* Title */}
-                        <h2 className="font-heading text-[1.1rem] font-bold leading-tight line-clamp-2 tracking-tight text-foreground">
+                        <h2 className="font-heading text-base sm:text-[1.1rem] font-bold leading-tight line-clamp-2 tracking-tight text-foreground">
                             {article.title}
                         </h2>
 
@@ -101,29 +101,31 @@ export function ArticleCard({ article, isSaved, onToggleSave, index }: ArticleCa
                     </div>
 
                     {/* Footer */}
-                    <div className="flex items-center justify-between px-6 pb-5 pt-1">
-                        <span className="font-mono text-[0.72rem] text-text-tertiary font-medium">
+                    <div className="flex items-center justify-between px-5 sm:px-6 pb-5 pt-1">
+                        <span className="font-mono text-[0.72rem] text-text-tertiary font-medium truncate max-w-[50%]">
                             {article.author || "Unknown"}
                         </span>
                         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                             <button
                                 onClick={() => onToggleSave(article.id, article.source)}
-                                className={`flex items-center justify-center w-8 h-8 rounded-sm border transition-all duration-150 ${isSaved
-                                        ? "bg-accent border-accent text-accent-foreground hover:bg-[#d4ff6b]"
-                                        : "bg-transparent border-border text-text-tertiary hover:bg-accent-dim hover:border-accent hover:text-accent"
+                                className={`group relative flex items-center justify-center w-8 h-8 rounded-sm border transition-all duration-150 ${isSaved
+                                    ? "bg-accent border-accent text-accent-foreground hover:bg-[#d4ff6b]"
+                                    : "bg-transparent border-border text-text-tertiary hover:bg-accent-dim hover:border-accent hover:text-accent"
                                     }`}
                                 aria-label={isSaved ? "Unsave article" : "Save article"}
                             >
                                 <Bookmark className="w-4 h-4" fill={isSaved ? "currentColor" : "none"} />
+                                <span className="tooltip">{isSaved ? "Unsave" : "Save"}</span>
                             </button>
                             <a
                                 href={article.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center justify-center w-8 h-8 rounded-sm border border-border bg-transparent text-text-tertiary hover:bg-accent-dim hover:border-accent hover:text-accent transition-all duration-150"
+                                className="group relative flex items-center justify-center w-8 h-8 rounded-sm border border-border bg-transparent text-text-tertiary hover:bg-accent-dim hover:border-accent hover:text-accent transition-all duration-150"
                                 aria-label="Open in new tab"
                             >
                                 <ExternalLink className="w-4 h-4" />
+                                <span className="tooltip">Open</span>
                             </a>
                         </div>
                     </div>

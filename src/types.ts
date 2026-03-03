@@ -24,4 +24,4 @@ export interface SavedArticle {
     source: string;
 }
 
-export type SourceFilter = "all" | "bens_bites" | "the_rundown" | "saved";
+export type SourceFilter = "all" | "bens_bites" | "the_rundown" | "reddit" | "saved";

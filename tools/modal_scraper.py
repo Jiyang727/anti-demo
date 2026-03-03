@@ -227,104 +227,80 @@ def scrape_and_aggregate():
         return articles
 
     # ════════════════════════════════════════════════════════════════════
-    # The AI Rundown Scraper
+    # The AI Rundown Scraper (regex-based — more reliable)
     # ════════════════════════════════════════════════════════════════════
 
-    class RundownHomepageParser(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.articles = []
-            self._in_link = False
-            self._current_url = None
-            self._current_title = ""
-            self._seen_urls = set()
-
-        def handle_starttag(self, tag, attrs):
-            if tag == "a":
-                attrs_dict = dict(attrs)
-                href = attrs_dict.get("href", "")
-                if href.startswith("https://therundown.ai/p/"):
-                    self._in_link = True
-                    self._current_url = href.split("?")[0]
-                    self._current_title = ""
-
-        def handle_data(self, data):
-            if self._in_link:
-                self._current_title += data
-
-        def handle_endtag(self, tag):
-            if tag == "a" and self._in_link:
-                self._in_link = False
-                url = self._current_url
-                title = self._current_title.strip()
-                if url and title and len(title) > 5 and url not in self._seen_urls:
-                    self._seen_urls.add(url)
-                    self.articles.append({"url": url, "title": title})
-
-    class RundownArticleParser(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.title = ""
-            self.subtitle = ""
-            self.authors = []
-            self.date = None
-            self.summary_parts = []
-            self._in_h1 = False
-            self._found_title = False
-            self._in_article = False
-            self._in_p = False
-            self._tag_stack = []
-
-        def handle_starttag(self, tag, attrs):
-            self._tag_stack.append(tag)
-            attrs_dict = dict(attrs)
-            cls = attrs_dict.get("class", "")
-            if tag == "h1" and not self._found_title:
-                self._in_h1 = True
-            elif tag == "article" or (tag == "div" and "body" in cls):
-                self._in_article = True
-            elif tag == "p" and self._in_article:
-                self._in_p = True
-            elif tag == "meta":
-                name = attrs_dict.get("name", "")
-                content = attrs_dict.get("content", "")
-                if name == "author" and content:
-                    self.authors.append(content)
-
-        def handle_data(self, data):
-            text = data.strip()
-            if not text:
-                return
-            if self._in_h1:
-                self.title += text
-            elif self._in_p and self._in_article and len(" ".join(self.summary_parts)) < 200:
-                self.summary_parts.append(text)
-
-        def handle_endtag(self, tag):
-            if self._tag_stack:
-                self._tag_stack.pop()
-            if tag == "h1" and self._in_h1:
-                self._in_h1 = False
-                self._found_title = True
-            elif tag == "p":
-                self._in_p = False
-
     def scrape_the_rundown():
+        """Use regex to extract article URLs from the Rundown homepage,
+        then fetch each article page for title/date/image."""
         print("[INFO] Scraping The AI Rundown...")
         html = fetch_url("https://therundown.ai")
         if not html:
             print("[ERROR] Failed to fetch The AI Rundown.", file=sys.stderr)
             return []
 
-        parser = RundownHomepageParser()
-        parser.feed(html)
-        stubs = parser.articles[:15]
-        print(f"[INFO] Found {len(stubs)} articles on homepage.")
+        # Extract unique /p/ links via regex
+        links = re.findall(r'href=["\']*(https://therundown\.ai/p/[a-z0-9\-]+)', html)
+        seen = set()
+        unique_links = []
+        for link in links:
+            clean = link.split("?")[0]
+            if clean not in seen:
+                seen.add(clean)
+                unique_links.append(clean)
+        unique_links = unique_links[:15]
+        print(f"[INFO] Found {len(unique_links)} unique article links.")
+
+        class RundownArticleParser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.title = ""
+                self.authors = []
+                self.summary_parts = []
+                self._in_h1 = False
+                self._found_title = False
+                self._in_article = False
+                self._in_p = False
+                self._tag_stack = []
+
+            def handle_starttag(self, tag, attrs):
+                self._tag_stack.append(tag)
+                attrs_dict = dict(attrs)
+                cls = attrs_dict.get("class", "")
+                if tag == "h1" and not self._found_title:
+                    self._in_h1 = True
+                elif tag == "article" or (tag == "div" and "body" in cls):
+                    self._in_article = True
+                elif tag == "p" and self._in_article:
+                    self._in_p = True
+                elif tag == "meta":
+                    name = attrs_dict.get("name", "")
+                    content = attrs_dict.get("content", "")
+                    if name == "author" and content:
+                        self.authors.append(content)
+
+            def handle_data(self, data):
+                text = data.strip()
+                if not text:
+                    return
+                if self._in_h1:
+                    self.title += text
+                elif self._in_p and self._in_article and len(" ".join(self.summary_parts)) < 200:
+                    self.summary_parts.append(text)
+
+            def handle_endtag(self, tag):
+                if self._tag_stack:
+                    self._tag_stack.pop()
+                if tag == "h1" and self._in_h1:
+                    self._in_h1 = False
+                    self._found_title = True
+                elif tag == "p":
+                    self._in_p = False
 
         articles = []
-        for stub in stubs:
+        for url in unique_links:
             time.sleep(REQUEST_DELAY)
-            html = fetch_url(stub["url"])
+            html = fetch_url(url)
             if not html:
                 continue
             try:
@@ -332,14 +308,19 @@ def scrape_and_aggregate():
                 ap.feed(html)
                 date_str = extract_jsonld_date(html)
                 image_url = extract_og_image(html)
+                title = ap.title.strip()
+                if not title:
+                    # Fallback: extract from og:title
+                    og_match = re.search(r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)', html, re.I)
+                    title = og_match.group(1) if og_match else "Untitled"
                 article = {
-                    "id": make_id(stub["url"]),
+                    "id": make_id(url),
                     "source": "the_rundown",
-                    "title": ap.title.strip() or stub.get("title", "Untitled"),
+                    "title": title,
                     "subtitle": None,
                     "author": ", ".join(ap.authors) if ap.authors else "The Rundown AI",
                     "date": date_str,
-                    "url": stub["url"],
+                    "url": url,
                     "summary": " ".join(ap.summary_parts)[:300] or None,
                     "imageUrl": image_url,
                     "scrapedAt": datetime.now(timezone.utc).isoformat(),
@@ -347,7 +328,70 @@ def scrape_and_aggregate():
                 articles.append(article)
                 print(f"  [OK] {article['title'][:60]}...")
             except Exception as e:
-                print(f"  [WARN] Parse error for {stub['url']}: {e}", file=sys.stderr)
+                print(f"  [WARN] Parse error for {url}: {e}", file=sys.stderr)
+        return articles
+
+    # ════════════════════════════════════════════════════════════════════
+    # Reddit r/artificial Scraper
+    # ════════════════════════════════════════════════════════════════════
+
+    def scrape_reddit():
+        """Fetch top posts from r/artificial using Reddit's public JSON API."""
+        print("[INFO] Scraping Reddit r/artificial...")
+        url = "https://www.reddit.com/r/artificial/hot.json?limit=20"
+        try:
+            req = Request(url, headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "application/json",
+            })
+            with urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            print(f"[ERROR] Reddit fetch failed: {e}", file=sys.stderr)
+            return []
+
+        posts = data.get("data", {}).get("children", [])
+        articles = []
+        for post in posts:
+            p = post.get("data", {})
+            if p.get("stickied"):
+                continue
+            title = p.get("title", "").strip()
+            if not title:
+                continue
+
+            # Build article URL
+            permalink = p.get("permalink", "")
+            post_url = p.get("url_overridden_by_dest") or f"https://reddit.com{permalink}"
+
+            # Get thumbnail/preview image
+            preview = p.get("preview", {})
+            images = preview.get("images", [])
+            image_url = None
+            if images:
+                image_url = images[0].get("source", {}).get("url", "").replace("&amp;", "&")
+            elif p.get("thumbnail", "").startswith("http"):
+                image_url = p["thumbnail"]
+
+            # Date from created_utc
+            created = p.get("created_utc")
+            date_str = datetime.fromtimestamp(created, tz=timezone.utc).isoformat() if created else None
+
+            article = {
+                "id": make_id(f"reddit-{p.get('id', '')}"),
+                "source": "reddit",
+                "title": title,
+                "subtitle": None,
+                "author": f"u/{p.get('author', 'unknown')}",
+                "date": date_str,
+                "url": post_url,
+                "summary": (p.get("selftext") or "")[:300] or None,
+                "imageUrl": image_url,
+                "scrapedAt": datetime.now(timezone.utc).isoformat(),
+            }
+            articles.append(article)
+
+        print(f"[INFO] Reddit: {len(articles)} posts scraped")
         return articles
 
     # ════════════════════════════════════════════════════════════════════
@@ -369,6 +413,7 @@ def scrape_and_aggregate():
             "sources": {
                 "bens_bites": len([a for a in unique if a.get("source") == "bens_bites"]),
                 "the_rundown": len([a for a in unique if a.get("source") == "the_rundown"]),
+                "reddit": len([a for a in unique if a.get("source") == "reddit"]),
             },
             "articles": unique,
         }
@@ -387,7 +432,10 @@ def scrape_and_aggregate():
     rundown = scrape_the_rundown()
     print(f"[INFO] The Rundown: {len(rundown)} articles scraped")
 
-    feed = aggregate(bens + rundown)
+    reddit = scrape_reddit()
+    print(f"[INFO] Reddit: {len(reddit)} articles scraped")
+
+    feed = aggregate(bens + rundown + reddit)
     output_path = os.path.join(VOLUME_PATH, "feed.json")
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(feed, f, indent=2, ensure_ascii=False)
@@ -398,6 +446,7 @@ def scrape_and_aggregate():
     print(f"✅ Done! {feed['totalArticles']} articles → {output_path}")
     print(f"   Ben's Bites: {feed['sources']['bens_bites']}")
     print(f"   The Rundown: {feed['sources']['the_rundown']}")
+    print(f"   Reddit: {feed['sources']['reddit']}")
     print(f"{'=' * 60}")
 
     return feed

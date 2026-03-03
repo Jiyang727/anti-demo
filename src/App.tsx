@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Zap, Search, RefreshCw, Bookmark, FileText, Loader2 } from "lucide-react";
+import { Zap, Search, RefreshCw, Bookmark, FileText, Bell } from "lucide-react";
 import { ArticleCard } from "@/components/ArticleCard";
+import { SkeletonCard } from "@/components/SkeletonCard";
 import {
     loadSavedIds,
     saveToPersistence,
@@ -10,6 +11,7 @@ import {
 import type { Article, FeedData, SourceFilter } from "@/types";
 
 const FEED_PATH = "https://lijiyang727--ai-pulse-scraper-get-feed.modal.run";
+const SEEN_COUNT_KEY = "ai-pulse-seen-count";
 
 export default function App() {
     const [articles, setArticles] = useState<Article[]>([]);
@@ -20,8 +22,42 @@ export default function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [toasts, setToasts] = useState<{ id: number; icon: string; message: string }[]>([]);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [notifEnabled, setNotifEnabled] = useState(false);
     const searchRef = useRef<HTMLInputElement>(null);
     const toastId = useRef(0);
+
+    // ── Notification setup ───────────────
+    useEffect(() => {
+        if ("Notification" in window) {
+            setNotifEnabled(Notification.permission === "granted");
+        }
+    }, []);
+
+    const requestNotifications = async () => {
+        if (!("Notification" in window)) {
+            showToast("⚠️", "Notifications not supported in this browser");
+            return;
+        }
+        const perm = await Notification.requestPermission();
+        setNotifEnabled(perm === "granted");
+        showToast(perm === "granted" ? "🔔" : "🔕",
+            perm === "granted" ? "Notifications enabled!" : "Notifications denied"
+        );
+    };
+
+    const checkForNewArticles = useCallback((count: number) => {
+        try {
+            const prev = parseInt(localStorage.getItem(SEEN_COUNT_KEY) || "0", 10);
+            localStorage.setItem(SEEN_COUNT_KEY, String(count));
+            if (prev > 0 && count > prev && Notification.permission === "granted") {
+                const diff = count - prev;
+                new Notification("AI Pulse — New Articles!", {
+                    body: `${diff} new article${diff > 1 ? "s" : ""} just arrived 🚀`,
+                    icon: "/favicon.ico",
+                });
+            }
+        } catch { /* ignore */ }
+    }, []);
 
     // ── Load Feed ────────────────────────
     const loadFeed = useCallback(async () => {
@@ -35,12 +71,13 @@ export default function App() {
             setSavedIds(loadSavedIds());
             setIsLoading(false);
             showToast("✨", `Loaded ${data.articles.length} articles`);
+            checkForNewArticles(data.articles.length);
         } catch (err) {
             console.error("Failed to load feed:", err);
             setIsLoading(false);
             showToast("⚠️", "Failed to load feed — run scrapers first");
         }
-    }, []);
+    }, [checkForNewArticles]);
 
     useEffect(() => {
         loadFeed();
@@ -116,14 +153,18 @@ export default function App() {
         all: articles.length,
         bens: articles.filter((a) => a.source === "bens_bites").length,
         rundown: articles.filter((a) => a.source === "the_rundown").length,
+        reddit: articles.filter((a) => a.source === "reddit").length,
         saved: articles.filter((a) => savedIds.has(a.id)).length,
     };
+
+    const sourceCount = [counts.bens > 0, counts.rundown > 0, counts.reddit > 0].filter(Boolean).length;
 
     // ── Tab data ─────────────────────────
     const tabs: { key: SourceFilter; label: string; count: number; dot?: string; icon?: React.ReactNode }[] = [
         { key: "all", label: "All Sources", count: counts.all, dot: "bg-accent" },
         { key: "bens_bites", label: "Ben's Bites", count: counts.bens, dot: "bg-bens" },
         { key: "the_rundown", label: "The Rundown", count: counts.rundown, dot: "bg-rundown" },
+        { key: "reddit", label: "Reddit", count: counts.reddit, dot: "bg-reddit" },
         { key: "saved", label: "Saved", count: counts.saved, icon: <Bookmark className="w-3.5 h-3.5" fill="currentColor" /> },
     ];
 
@@ -135,23 +176,23 @@ export default function App() {
 
             {/* ═══ Header ═══ */}
             <header className="sticky top-0 z-50 bg-background/92 backdrop-blur-xl border-b border-border">
-                <div className="max-w-[1400px] mx-auto px-8 py-5 flex items-center gap-6 flex-wrap">
+                <div className="max-w-[1400px] mx-auto px-4 sm:px-8 py-4 sm:py-5 flex items-center gap-3 sm:gap-6 flex-wrap">
                     {/* Logo */}
                     <div className="flex items-center gap-2">
-                        <div className="w-[42px] h-[42px] rounded-sm bg-accent flex items-center justify-center text-accent-foreground animate-pulse-glow">
-                            <Zap className="w-6 h-6" />
+                        <div className="w-9 h-9 sm:w-[42px] sm:h-[42px] rounded-sm bg-accent flex items-center justify-center text-accent-foreground animate-pulse-glow">
+                            <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
                         </div>
-                        <h1 className="font-heading text-[1.6rem] font-extrabold tracking-tight uppercase text-foreground">
+                        <h1 className="font-heading text-xl sm:text-[1.6rem] font-extrabold tracking-tight uppercase text-foreground">
                             AI <span className="text-accent">Pulse</span>
                         </h1>
                     </div>
 
-                    <p className="text-text-tertiary text-sm font-mono mr-auto hidden md:block">
+                    <p className="text-text-tertiary text-sm font-mono mr-auto hidden lg:block">
                         Curated AI news from the best newsletters
                     </p>
 
                     {/* Search */}
-                    <div className="relative flex items-center">
+                    <div className="relative flex items-center order-last sm:order-none w-full sm:w-auto">
                         <Search className="absolute left-3 w-4 h-4 text-text-muted pointer-events-none" />
                         <input
                             ref={searchRef}
@@ -159,29 +200,42 @@ export default function App() {
                             placeholder="Search articles..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="bg-white/4 border border-border rounded-sm pl-10 pr-4 py-2.5 text-foreground font-mono text-sm w-[220px] focus:w-[280px] focus:border-accent focus:shadow-[0_0_0_2px_rgba(191,245,73,0.1)] outline-none transition-all duration-200 placeholder:text-text-muted"
+                            className="bg-white/4 border border-border rounded-sm pl-10 pr-4 py-2.5 text-foreground font-mono text-sm w-full sm:w-[220px] sm:focus:w-[280px] focus:border-accent focus:shadow-[0_0_0_2px_rgba(191,245,73,0.1)] outline-none transition-all duration-200 placeholder:text-text-muted"
                         />
                     </div>
+
+                    {/* Notification Bell */}
+                    <button
+                        onClick={requestNotifications}
+                        className={`hidden sm:flex items-center justify-center w-10 h-10 rounded-sm border transition-all duration-150 ${notifEnabled
+                                ? "bg-accent/10 border-accent text-accent"
+                                : "bg-transparent border-border text-text-tertiary hover:bg-white/4 hover:border-accent hover:text-accent"
+                            }`}
+                        title={notifEnabled ? "Notifications enabled" : "Enable notifications"}
+                    >
+                        <Bell className="w-4 h-4" />
+                        {notifEnabled && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent animate-pulse" />}
+                    </button>
 
                     {/* Refresh */}
                     <button
                         onClick={handleRefresh}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-accent rounded-sm text-accent-foreground text-sm font-bold uppercase tracking-wider hover:bg-[#d4ff6b] active:bg-[#a8dc34] transition-all duration-150 hover:-translate-y-px"
+                        className="flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-accent rounded-sm text-accent-foreground text-sm font-bold uppercase tracking-wider hover:bg-[#d4ff6b] active:bg-[#a8dc34] transition-all duration-150 hover:-translate-y-px"
                     >
                         <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin-fast" : ""}`} />
-                        Refresh
+                        <span className="hidden sm:inline">Refresh</span>
                     </button>
                 </div>
             </header>
 
             {/* ═══ Stats Bar ═══ */}
-            <section className="max-w-[1400px] mx-auto px-8 mt-8 flex items-center justify-center gap-12 relative z-10">
+            <section className="max-w-[1400px] mx-auto px-4 sm:px-8 mt-6 sm:mt-8 grid grid-cols-2 sm:flex sm:items-center sm:justify-center gap-4 sm:gap-12 relative z-10">
                 <StatItem value={String(counts.all)} label="Articles" accent />
-                <div className="w-px h-9 bg-border" />
-                <StatItem value="2" label="Sources" accent />
-                <div className="w-px h-9 bg-border" />
+                <div className="hidden sm:block w-px h-9 bg-border" />
+                <StatItem value={String(sourceCount)} label="Sources" accent />
+                <div className="hidden sm:block w-px h-9 bg-border" />
                 <StatItem value={String(counts.saved)} label="Saved" accent />
-                <div className="w-px h-9 bg-border" />
+                <div className="hidden sm:block w-px h-9 bg-border" />
                 <StatItem
                     value={feedMeta ? formatRelativeTime(feedMeta.generatedAt) : "—"}
                     label="Last Updated"
@@ -189,43 +243,46 @@ export default function App() {
             </section>
 
             {/* ═══ Filter Tabs ═══ */}
-            <nav className="max-w-[1400px] mx-auto px-8 mt-8 flex gap-2 flex-wrap relative z-10">
-                {tabs.map((tab) => (
-                    <button
-                        key={tab.key}
-                        onClick={() => setActiveSource(tab.key)}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-sm font-mono text-xs font-medium uppercase tracking-wider border transition-all duration-150 whitespace-nowrap ${activeSource === tab.key
-                            ? "bg-accent border-accent text-accent-foreground shadow-[0_0_20px_rgba(191,245,73,0.2)]"
-                            : "bg-transparent border-border text-muted-foreground hover:bg-white/4 hover:border-accent hover:text-accent"
-                            }`}
-                    >
-                        {tab.dot && (
-                            <span
-                                className={`w-1.5 h-1.5 rounded-full ${activeSource === tab.key ? "bg-accent-foreground" : tab.dot
-                                    }`}
-                            />
-                        )}
-                        {tab.icon}
-                        {tab.label}
-                        <span
-                            className={`px-1.5 py-px rounded-sm text-[0.7rem] font-bold font-mono ${activeSource === tab.key
-                                ? "bg-accent-foreground/20 text-accent-foreground"
-                                : "bg-white/8"
+            <nav className="max-w-[1400px] mx-auto px-4 sm:px-8 mt-6 sm:mt-8 relative z-10 overflow-x-auto scrollbar-hide">
+                <div className="flex gap-2 min-w-max pb-2">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.key}
+                            onClick={() => setActiveSource(tab.key)}
+                            className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-sm font-mono text-xs font-medium uppercase tracking-wider border transition-all duration-150 whitespace-nowrap ${activeSource === tab.key
+                                ? "bg-accent border-accent text-accent-foreground shadow-[0_0_20px_rgba(191,245,73,0.2)]"
+                                : "bg-transparent border-border text-muted-foreground hover:bg-white/4 hover:border-accent hover:text-accent"
                                 }`}
                         >
-                            {tab.count}
-                        </span>
-                    </button>
-                ))}
+                            {tab.dot && (
+                                <span
+                                    className={`w-1.5 h-1.5 rounded-full ${activeSource === tab.key ? "bg-accent-foreground" : tab.dot
+                                        }`}
+                                />
+                            )}
+                            {tab.icon}
+                            {tab.label}
+                            <span
+                                className={`px-1.5 py-px rounded-sm text-[0.7rem] font-bold font-mono ${activeSource === tab.key
+                                    ? "bg-accent-foreground/20 text-accent-foreground"
+                                    : "bg-white/8"
+                                    }`}
+                            >
+                                {tab.count}
+                            </span>
+                        </button>
+                    ))}
+                </div>
             </nav>
 
             {/* ═══ Main Content ═══ */}
-            <main className="max-w-[1400px] mx-auto px-8 mt-8 mb-16 relative z-10 min-h-[400px]">
+            <main className="max-w-[1400px] mx-auto px-4 sm:px-8 mt-6 sm:mt-8 mb-16 relative z-10 min-h-[400px]">
                 {isLoading ? (
-                    <div className="flex flex-col items-center justify-center gap-6 py-16 text-text-tertiary">
-                        <Loader2 className="w-9 h-9 animate-spin-fast text-accent" />
-                        <p className="font-mono text-sm">Loading your AI news feed...</p>
-                    </div>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                        {Array.from({ length: 8 }).map((_, i) => (
+                            <SkeletonCard key={i} />
+                        ))}
+                    </ul>
                 ) : filtered.length === 0 ? (
                     <div className="flex flex-col items-center justify-center gap-4 py-16 text-text-tertiary">
                         <FileText className="w-16 h-16 opacity-20" />
@@ -233,7 +290,7 @@ export default function App() {
                         <p className="text-sm">Try changing your filter or search query</p>
                     </div>
                 ) : (
-                    <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                         {filtered.map((article, i) => (
                             <ArticleCard
                                 key={article.id}
@@ -248,11 +305,11 @@ export default function App() {
             </main>
 
             {/* ═══ Toasts ═══ */}
-            <div className="fixed bottom-8 right-8 flex flex-col gap-2 z-[1000] pointer-events-none">
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-auto sm:bottom-8 sm:right-8 flex flex-col gap-2 z-[1000] pointer-events-none">
                 {toasts.map((toast) => (
                     <div
                         key={toast.id}
-                        className="flex items-center gap-2 px-5 py-3 bg-accent rounded-sm text-accent-foreground font-mono text-sm font-bold uppercase tracking-wide shadow-[0_0_40px_rgba(191,245,73,0.2)] pointer-events-auto animate-toast-enter"
+                        className="flex items-center gap-2 px-4 sm:px-5 py-3 bg-accent rounded-sm text-accent-foreground font-mono text-xs sm:text-sm font-bold uppercase tracking-wide shadow-[0_0_40px_rgba(191,245,73,0.2)] pointer-events-auto animate-toast-enter"
                     >
                         <span>{toast.icon}</span>
                         <span>{toast.message}</span>
@@ -266,10 +323,10 @@ export default function App() {
 function StatItem({ value, label, accent }: { value: string; label: string; accent?: boolean }) {
     return (
         <div className="flex flex-col items-center gap-0.5">
-            <span className={`font-heading text-2xl font-extrabold tracking-tight ${accent ? "text-accent" : "text-accent font-mono text-base"}`}>
+            <span className={`font-heading text-xl sm:text-2xl font-extrabold tracking-tight ${accent ? "text-accent" : "text-accent font-mono text-base"}`}>
                 {value}
             </span>
-            <span className="font-mono text-[0.68rem] text-text-tertiary uppercase tracking-widest font-medium">
+            <span className="font-mono text-[0.6rem] sm:text-[0.68rem] text-text-tertiary uppercase tracking-widest font-medium">
                 {label}
             </span>
         </div>
